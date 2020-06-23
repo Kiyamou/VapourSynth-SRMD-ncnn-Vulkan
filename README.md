@@ -1,13 +1,15 @@
 # VapourSynth-SRMD-ncnn-Vulkan
 
-SRMD super resolution for VapourSynth, based on [srmd-ncnn-vulkan](https://github.com/nihui/srmd-ncnn-vulkan).
+SRMD super resolution for VapourSynth, based on [srmd-ncnn-vulkan](https://github.com/nihui/srmd-ncnn-vulkan). Some code is from [vapoursynth-waifu2x-ncnn-vulkan](https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan).
 
 ## Usage
 
 ```python
-core.jinc.JincResize(clip clip, [int scale, int noise, int tilesize,
+core.srmdnv.SRMD(clip clip, [int scale, int noise, int tilesize,
                      int gpu_id, int gpu_thread, bool tta])
 ```
+
+Models should be located in folder `models`, and folder `models` should be located in the same folder as dynamic link library.
 
 * ***clip***
     * Required parameter.
@@ -21,4 +23,5 @@ core.jinc.JincResize(clip clip, [int scale, int noise, int tilesize,
 
 ## Reference Code
 
-vapoursynth-waifu2x-ncnn-vulkan: https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan
+* srmd-ncnn-vulkan: https://github.com/nihui/srmd-ncnn-vulkan
+* vapoursynth-waifu2x-ncnn-vulkan: https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan
