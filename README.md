@@ -6,7 +6,7 @@ SRMD super resolution for VapourSynth, based on [srmd-ncnn-vulkan](https://githu
 
 ```python
 core.srmdnv.SRMD(clip clip, [int scale, int noise, int tilesize,
-                     int gpu_id, int gpu_thread, bool tta])
+                 int gpu_id, int gpu_thread, bool tta])
 ```
 
 Models should be located in folder `models`, and folder `models` should be located in the same folder as dynamic link library.
