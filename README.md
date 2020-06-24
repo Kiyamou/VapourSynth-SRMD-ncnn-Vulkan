@@ -16,7 +16,7 @@ Models should be located in folder `models`, and folder `models` should be locat
     * Clip to process.
     * Only 32bit RGB is supported.
 * ***scale***
-    * Optional parameter. Range: 2–4. *Default: 4*.
+    * Optional parameter. Range: 2–4. *Default: 2*.
 * ***noise***
     * Optional parameter. Range: -1–10. *Default: 3*.
     * The larger value, the stronger the effect of denoise.
