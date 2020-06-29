@@ -196,24 +196,41 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
 			throw std::string{ "invalid 'gpu_id'" };
 
         // Tile size
-        int tilesize = int64ToIntS(vsapi->propGetInt(in, "tilesize", 0, &err));
+        int tilesize_x = int64ToIntS(vsapi->propGetInt(in, "block_w", 0, &err));
         if (err)
-            tilesize = 0;
-        if (tilesize != 0 && tilesize < 32)
-            throw std::string{ "tilesize must be >= 32 or set as 0" };
-        if (tilesize == 0)
-        {
-            // More fine-grained tilesize policy here
-            uint32_t heap_budget = ncnn::get_gpu_device(gpuId)->get_heap_budget();
+            tilesize_x = 0;
+        if (tilesize_x != 0 && tilesize_x < 32)
+            throw std::string{ "block_w must be >= 32 or set as 0" };
 
+        int tilesize_y = int64ToIntS(vsapi->propGetInt(in, "block_h", 0, &err));
+        if (err)
+            tilesize_y = tilesize_x;
+        if (tilesize_y != 0 && tilesize_y < 32)
+            throw std::string{ "block_h must be >= 32 or set as 0" };
+
+        // More fine-grained tilesize policy here
+        uint32_t heap_budget = ncnn::get_gpu_device(gpuId)->get_heap_budget();
+        if (tilesize_x == 0)
+        {
             if (heap_budget > 2600)
-                tilesize = 400;
+                tilesize_x = 400;
             else if (heap_budget > 740)
-                tilesize = 200;
+                tilesize_x = 200;
             else if (heap_budget > 250)
-                tilesize = 100;
+                tilesize_x = 100;
             else
-                tilesize = 32;
+                tilesize_x = 32;
+        }
+        if (tilesize_y == 0)
+        {
+            if (heap_budget > 2600)
+                tilesize_y = 400;
+            else if (heap_budget > 740)
+                tilesize_y = 200;
+            else if (heap_budget > 250)
+                tilesize_y = 100;
+            else
+                tilesize_y = 32;
         }
 
         int gpuThread;
@@ -234,7 +251,8 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
         d->srmd = new SRMD(gpuId, tta);
         d->srmd->scale = scale;
         d->srmd->noise = noise;
-        d->srmd->tilesize = tilesize;
+        d->srmd->tilesize_x = tilesize_x;
+        d->srmd->tilesize_y = tilesize_y;
         d->srmd->prepadding = 12;
         d->srmd->load(paramPath, modelPath);
     }
@@ -264,7 +282,8 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                  "clip:clip;"
                  "scale:int:opt;"
                  "noise:int:opt;"
-                 "tilesize:int:opt;"
+                 "block_w:int:opt;"
+                 "block_h:int:opt;"
                  "gpu_id:int:opt;"
                  "gpu_thread:int:opt;"
                  "tta:int:opt",

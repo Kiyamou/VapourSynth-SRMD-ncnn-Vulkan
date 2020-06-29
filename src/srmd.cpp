@@ -126,8 +126,8 @@ int SRMD::load(const std::string& parampath, const std::string& modelpath)
 
 int SRMD::process(const float* srcpR, const float* srcpG, const float* srcpB, float* dstpR, float* dstpG, float* dstpB, int w, int h, int channels, int src_stride, int dst_stride) const
 {
-    const int TILE_SIZE_X = tilesize;
-    const int TILE_SIZE_Y = tilesize;
+    const int TILE_SIZE_X = tilesize_x;
+    const int TILE_SIZE_Y = tilesize_y;
 
     ncnn::VkAllocator* blob_vkallocator = net.vulkan_device()->acquire_blob_allocator();
     ncnn::VkAllocator* staging_vkallocator = net.vulkan_device()->acquire_staging_allocator();

@@ -23,7 +23,8 @@ public:
     // srmd parameters
     int scale;
     int noise;
-    int tilesize;
+    int tilesize_x;
+    int tilesize_y;
     int prepadding;
 
 private:
