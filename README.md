@@ -33,7 +33,7 @@ Models should be located in folder `models`, and folder `models` should be locat
   * If you have more than one gpu devices, you can select gpu device by the parameter.
 * ***tta***
   * Optional parameter. *Default: False*.
-  * 
+  * If true, quality will be improved, but speed will be significantly slower.
 
 ## Compilation
 
