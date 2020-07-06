@@ -196,13 +196,13 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
 			throw std::string{ "invalid 'gpu_id'" };
 
         // Tile size
-        int tilesize_x = int64ToIntS(vsapi->propGetInt(in, "block_w", 0, &err));
+        int tilesize_x = int64ToIntS(vsapi->propGetInt(in, "tilesize_x", 0, &err));
         if (err)
             tilesize_x = 0;
         if (tilesize_x != 0 && tilesize_x < 32)
             throw std::string{ "block_w must be >= 32 or set as 0" };
 
-        int tilesize_y = int64ToIntS(vsapi->propGetInt(in, "block_h", 0, &err));
+        int tilesize_y = int64ToIntS(vsapi->propGetInt(in, "tilesize_y", 0, &err));
         if (err)
             tilesize_y = tilesize_x;
         if (tilesize_y != 0 && tilesize_y < 32)
@@ -282,8 +282,8 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                  "clip:clip;"
                  "scale:int:opt;"
                  "noise:int:opt;"
-                 "block_w:int:opt;"
-                 "block_h:int:opt;"
+                 "tilesize_x:int:opt;"
+                 "tilesize_y:int:opt;"
                  "gpu_id:int:opt;"
                  "gpu_thread:int:opt;"
                  "tta:int:opt",
