@@ -1,5 +1,7 @@
 # VapourSynth-SRMD-ncnn-Vulkan
 
+[![Build Status](https://github.com/Kiyamou/VapourSynth-SRMD-ncnn-Vulkan/workflows/CI/badge.svg)](https://github.com/Kiyamou/VapourSynth-SRMD-ncnn-Vulkan/actions)
+
 SRMD super resolution for VapourSynth, based on [srmd-ncnn-vulkan](https://github.com/nihui/srmd-ncnn-vulkan). Some code is from [vapoursynth-waifu2x-ncnn-vulkan](https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan).
 
 ## Usage
