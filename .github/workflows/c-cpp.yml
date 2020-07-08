@@ -1,0 +1,42 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: 'recursive'
+    - name: cache-vulkansdk
+      id: cache-vulkansdk
+      uses: actions/cache@v1
+      with:
+        path: "1.2.135.0"
+        key: vulkansdk-linux-x86_64-1.2.135.0
+    - name: vulkansdk
+      if: steps.cache-vulkansdk.outputs.cache-hit != 'true'
+      run: |
+        wget https://sdk.lunarg.com/sdk/download/1.2.135.0/linux/vulkansdk-linux-x86_64-1.2.135.0.tar.gz?Human=true -O vulkansdk-linux-x86_64-1.2.135.0.tar.gz
+        tar -xf vulkansdk-linux-x86_64-1.2.135.0.tar.gz
+        rm -rf 1.2.135.0/source 1.2.135.0/samples
+        find 1.2.135.0 -type f | grep -v -E 'vulkan|glslang' | xargs rm
+    - name: configure
+      run:  |
+        wget https://github.com/vapoursynth/vapoursynth/archive/R50.tar.gz
+        tar -xzvf R50.tar.gz vapoursynth-R50/include
+        mkdir src/vapoursynth
+        mv vapoursynth-R50/include/VapourSynth.h src/vapoursynth/VapourSynth.h
+        mv vapoursynth-R50/include/VSHelper.h src/vapoursynth/VSHelper.h
+        export VULKAN_SDK=`pwd`/1.2.135.0/x86_64
+        mkdir build && cd build
+        cmake ../src
+    - name: build
+      run: cmake --build build -j 2
