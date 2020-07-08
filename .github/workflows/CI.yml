@@ -37,6 +37,6 @@ jobs:
         mv vapoursynth-R50/include/VSHelper.h src/vapoursynth/VSHelper.h
         export VULKAN_SDK=`pwd`/1.2.135.0/x86_64
         mkdir build && cd build
-        cmake ../src
+        cmake -DVAPOURSYNTH_INCLUDE_DIR=../src ..
     - name: build
       run: cmake --build build -j 2
