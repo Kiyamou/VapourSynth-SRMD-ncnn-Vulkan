@@ -193,7 +193,7 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
         if (err)
             gpuId = 0;
         if (gpuId < 0 || gpuId >= ncnn::get_gpu_count())
-			throw std::string{ "invalid 'gpu_id'" };
+            throw std::string{ "invalid 'gpu_id'" };
 
         // Tile size
         int tilesize_x = int64ToIntS(vsapi->propGetInt(in, "tilesize_x", 0, &err));
