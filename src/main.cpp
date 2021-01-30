@@ -238,8 +238,8 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
         if (customGpuThread > 0)
             gpuThread = customGpuThread;
         else
-            gpuThread = int64ToIntS(ncnn::get_gpu_info(gpuId).transfer_queue_count);
-        gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count));
+            gpuThread = int64ToIntS(ncnn::get_gpu_info(gpuId).transfer_queue_count());
+        gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count()));
 
         std::lock_guard<std::mutex> guard(g_lock);
         if (!g_gpu_semaphore.count(gpuId))
