@@ -28,6 +28,7 @@ public:
     int prepadding;
 
 private:
+    ncnn::VulkanDevice* vkdev;
     ncnn::Net net;
     ncnn::Pipeline* srmd_preproc;
     ncnn::Pipeline* srmd_postproc;

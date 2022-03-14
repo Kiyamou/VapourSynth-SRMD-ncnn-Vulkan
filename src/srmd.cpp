@@ -5,54 +5,14 @@
 #include <algorithm>
 #include <vector>
 
-static const uint32_t srmd_preproc_spv_data[] = {
-    #include "srmd_preproc.spv.hex.h"
-};
-static const uint32_t srmd_preproc_fp16s_spv_data[] = {
-    #include "srmd_preproc_fp16s.spv.hex.h"
-};
-static const uint32_t srmd_preproc_int8s_spv_data[] = {
-    #include "srmd_preproc_int8s.spv.hex.h"
-};
-static const uint32_t srmd_postproc_spv_data[] = {
-    #include "srmd_postproc.spv.hex.h"
-};
-static const uint32_t srmd_postproc_fp16s_spv_data[] = {
-    #include "srmd_postproc_fp16s.spv.hex.h"
-};
-static const uint32_t srmd_postproc_int8s_spv_data[] = {
-    #include "srmd_postproc_int8s.spv.hex.h"
-};
-
-static const uint32_t srmd_preproc_tta_spv_data[] = {
-    #include "srmd_preproc_tta.spv.hex.h"
-};
-static const uint32_t srmd_preproc_tta_fp16s_spv_data[] = {
-    #include "srmd_preproc_tta_fp16s.spv.hex.h"
-};
-static const uint32_t srmd_preproc_tta_int8s_spv_data[] = {
-    #include "srmd_preproc_tta_int8s.spv.hex.h"
-};
-static const uint32_t srmd_postproc_tta_spv_data[] = {
-    #include "srmd_postproc_tta.spv.hex.h"
-};
-static const uint32_t srmd_postproc_tta_fp16s_spv_data[] = {
-    #include "srmd_postproc_tta_fp16s.spv.hex.h"
-};
-static const uint32_t srmd_postproc_tta_int8s_spv_data[] = {
-    #include "srmd_postproc_tta_int8s.spv.hex.h"
-};
+#include "srmd_preproc.comp.hex.h"
+#include "srmd_postproc.comp.hex.h"
+#include "srmd_preproc_tta.comp.hex.h"
+#include "srmd_postproc_tta.comp.hex.h"
 
 SRMD::SRMD(int gpuid, bool _tta_mode)
 {
-    net.opt.use_vulkan_compute = true;
-    net.opt.use_fp16_packed = true;
-    net.opt.use_fp16_storage = true;
-    net.opt.use_fp16_arithmetic = false;
-    net.opt.use_int8_storage = false;
-    net.opt.use_int8_arithmetic = false;
-
-    net.set_vulkan_device(gpuid);
+    vkdev = gpuid == -1 ? 0 : ncnn::get_gpu_device(gpuid);
 
     srmd_preproc = 0;
     srmd_postproc = 0;
@@ -69,10 +29,20 @@ SRMD::~SRMD()
 
 int SRMD::load(const std::string& parampath, const std::string& modelpath)
 {
+    net.opt.use_vulkan_compute = true;
+    net.opt.use_fp16_packed = true;
+    net.opt.use_fp16_storage = true;
+    net.opt.use_fp16_arithmetic = false;
+    net.opt.use_int8_storage = true;
+    net.opt.use_int8_arithmetic = false;
+
+    net.set_vulkan_device(vkdev);
+    
     net.load_param(parampath.c_str());
     net.load_model(modelpath.c_str());
 
     // initialize preprocess and postprocess pipeline
+    if (vkdev)
     {
         std::vector<ncnn::vk_specialization_type> specializations(1);
 #if _WIN32
@@ -81,43 +51,42 @@ int SRMD::load(const std::string& parampath, const std::string& modelpath)
         specializations[0].i = 0;
 #endif
 
-        srmd_preproc = new ncnn::Pipeline(net.vulkan_device());
-        srmd_preproc->set_optimal_local_size_xyz(32, 32, 3);
-
-        srmd_postproc = new ncnn::Pipeline(net.vulkan_device());
-        srmd_postproc->set_optimal_local_size_xyz(32, 32, 3);
-
-        if (tta_mode)
         {
-            if (net.opt.use_fp16_storage && net.opt.use_int8_storage)
-                srmd_preproc->create(srmd_preproc_tta_int8s_spv_data, sizeof(srmd_preproc_tta_int8s_spv_data), specializations);
-            else if (net.opt.use_fp16_storage)
-                srmd_preproc->create(srmd_preproc_tta_fp16s_spv_data, sizeof(srmd_preproc_tta_fp16s_spv_data), specializations);
-            else
-                srmd_preproc->create(srmd_preproc_tta_spv_data, sizeof(srmd_preproc_tta_spv_data), specializations);
+            static std::vector<uint32_t> spirv;
+            static ncnn::Mutex lock;
+            {
+                ncnn::MutexLockGuard guard(lock);
+                if (spirv.empty())
+                {
+                    if (tta_mode)
+                        compile_spirv_module(srmd_preproc_tta_comp_data, sizeof(srmd_preproc_tta_comp_data), net.opt, spirv);
+                    else
+                        compile_spirv_module(srmd_preproc_comp_data, sizeof(srmd_preproc_comp_data), net.opt, spirv);
+                }
+            }
 
-            if (net.opt.use_fp16_storage && net.opt.use_int8_storage)
-                srmd_postproc->create(srmd_postproc_tta_int8s_spv_data, sizeof(srmd_postproc_tta_int8s_spv_data), specializations);
-            else if (net.opt.use_fp16_storage)
-                srmd_postproc->create(srmd_postproc_tta_fp16s_spv_data, sizeof(srmd_postproc_tta_fp16s_spv_data), specializations);
-            else
-                srmd_postproc->create(srmd_postproc_tta_spv_data, sizeof(srmd_postproc_tta_spv_data), specializations);
+            srmd_preproc = new ncnn::Pipeline(vkdev);
+            srmd_preproc->set_optimal_local_size_xyz(8, 8, 3);  // ???
+            srmd_preproc->create(spirv.data(), spirv.size() * 4, specializations);
         }
-        else
-        {
-            if (net.opt.use_fp16_storage && net.opt.use_int8_storage)
-                srmd_preproc->create(srmd_preproc_int8s_spv_data, sizeof(srmd_preproc_int8s_spv_data), specializations);
-            else if (net.opt.use_fp16_storage)
-                srmd_preproc->create(srmd_preproc_fp16s_spv_data, sizeof(srmd_preproc_fp16s_spv_data), specializations);
-            else
-                srmd_preproc->create(srmd_preproc_spv_data, sizeof(srmd_preproc_spv_data), specializations);
 
-            if (net.opt.use_fp16_storage && net.opt.use_int8_storage)
-                srmd_postproc->create(srmd_postproc_int8s_spv_data, sizeof(srmd_postproc_int8s_spv_data), specializations);
-            else if (net.opt.use_fp16_storage)
-                srmd_postproc->create(srmd_postproc_fp16s_spv_data, sizeof(srmd_postproc_fp16s_spv_data), specializations);
-            else
-                srmd_postproc->create(srmd_postproc_spv_data, sizeof(srmd_postproc_spv_data), specializations);
+        {
+            static std::vector<uint32_t> spirv;
+            static ncnn::Mutex lock;
+            {
+                ncnn::MutexLockGuard guard(lock);
+                if (spirv.empty())
+                {
+                    if (tta_mode)
+                        compile_spirv_module(srmd_postproc_tta_comp_data, sizeof(srmd_postproc_tta_comp_data), net.opt, spirv);
+                    else
+                        compile_spirv_module(srmd_postproc_comp_data, sizeof(srmd_postproc_comp_data), net.opt, spirv);
+                }
+            }
+
+            srmd_postproc = new ncnn::Pipeline(vkdev);
+            srmd_postproc->set_optimal_local_size_xyz(8, 8, 3);
+            srmd_postproc->create(spirv.data(), spirv.size() * 4, specializations);
         }
     }
 
@@ -129,8 +98,8 @@ int SRMD::process(const float* srcpR, const float* srcpG, const float* srcpB, fl
     const int TILE_SIZE_X = tilesize_x;
     const int TILE_SIZE_Y = tilesize_y;
 
-    ncnn::VkAllocator* blob_vkallocator = net.vulkan_device()->acquire_blob_allocator();
-    ncnn::VkAllocator* staging_vkallocator = net.vulkan_device()->acquire_staging_allocator();
+    ncnn::VkAllocator* blob_vkallocator = vkdev->acquire_blob_allocator();
+    ncnn::VkAllocator* staging_vkallocator = vkdev->acquire_staging_allocator();
 
     ncnn::Option opt = net.opt;
     opt.blob_vkallocator = blob_vkallocator;
@@ -172,7 +141,7 @@ int SRMD::process(const float* srcpR, const float* srcpG, const float* srcpB, fl
             }
         }
 
-        ncnn::VkCompute cmd(net.vulkan_device());
+        ncnn::VkCompute cmd(vkdev);
 
         // upload
         ncnn::VkMat in_gpu;
@@ -412,8 +381,8 @@ int SRMD::process(const float* srcpR, const float* srcpG, const float* srcpB, fl
         }
     }
 
-    net.vulkan_device()->reclaim_blob_allocator(blob_vkallocator);
-    net.vulkan_device()->reclaim_staging_allocator(staging_vkallocator);
+    vkdev->reclaim_blob_allocator(blob_vkallocator);
+    vkdev->reclaim_staging_allocator(staging_vkallocator);
 
     return 0;
 }
