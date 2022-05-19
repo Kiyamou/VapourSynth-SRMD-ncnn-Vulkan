@@ -10,6 +10,8 @@
 #include "gpu.h"
 #include "layer.h"
 
+constexpr int CHANNELS = 3;
+
 class SRMD
 {
 public:
@@ -17,7 +19,7 @@ public:
     ~SRMD();
 
     int load(const std::string& parampath, const std::string& modelpath);
-    int process(const float* srcpR, const float* srcpG, const float* srcpB, float* dstpR, float* dstpG, float* dstpB, int width, int height, int channels, int src_stride, int dst_stride) const;
+    int process(const float* srcpR, const float* srcpG, const float* srcpB, float* dstpR, float* dstpG, float* dstpB, int width, int height, int src_stride, int dst_stride) const;
 
 public:
     // srmd parameters
