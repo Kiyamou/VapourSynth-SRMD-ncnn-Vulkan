@@ -32,7 +32,7 @@ int SRMD::load(const std::string& parampath, const std::string& modelpath)
     net.opt.use_fp16_packed = true;
     net.opt.use_fp16_storage = true;
     net.opt.use_fp16_arithmetic = false;
-    net.opt.use_int8_storage = true;
+    net.opt.use_int8_storage = false;
     net.opt.use_int8_arithmetic = false;
 
     net.set_vulkan_device(vkdev);
@@ -65,7 +65,7 @@ int SRMD::load(const std::string& parampath, const std::string& modelpath)
             }
 
             srmd_preproc = new ncnn::Pipeline(vkdev);
-            srmd_preproc->set_optimal_local_size_xyz(8, 8, 3);  // ???
+            srmd_preproc->set_optimal_local_size_xyz(8, 8, 3);
             srmd_preproc->create(spirv.data(), spirv.size() * 4, specializations);
         }
 
