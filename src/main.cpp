@@ -7,7 +7,7 @@
 #include <condition_variable>
 #include <fstream>
 
-#include "srmd.h"
+#include "srmd.hpp"
 
 #include "VapourSynth.h"
 #include "VSHelper.h"

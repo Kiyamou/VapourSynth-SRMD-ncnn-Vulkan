@@ -1,7 +1,7 @@
 // srmd implemented with ncnn library
 
-#ifndef SRMD_H
-#define SRMD_H
+#ifndef SRMD_HPP
+#define SRMD_HPP
 
 #include <string>
 
@@ -37,4 +37,4 @@ private:
     bool tta_mode;
 };
 
-#endif // SRMD_H
+#endif // SRMD_HPP

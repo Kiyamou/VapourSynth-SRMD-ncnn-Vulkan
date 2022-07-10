@@ -1,6 +1,6 @@
 // srmd implemented with ncnn library
 
-#include "srmd.h"
+#include "srmd.hpp"
 
 #include <algorithm>
 #include <vector>
