@@ -25,7 +25,7 @@ env:
   CMAKE_BUILD_TYPE: Release
 
 jobs:
-  build:
+  build-linux:
 
     runs-on: ubuntu-latest
 
@@ -59,6 +59,46 @@ jobs:
           export VULKAN_SDK=$(pwd)/${{env.VULKAN_SDK_VERSION}}/x86_64
           mkdir build && cd build
           cmake -DVAPOURSYNTH_INCLUDE_DIR=../src/vapoursynth ..
+
+      - name: build
+        run: cmake --build build -j 2
+
+  build-windows:
+
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: 'recursive'
+
+      - name: cache-vulkansdk
+        id: cache-vulkansdk
+        uses: actions/cache@v3
+        with:
+          path: ${{env.VULKAN_SDK_VERSION}}
+          key: vulkansdk-windows-${{env.VULKAN_SDK_VERSION}}
+
+      - name: vulkansdk
+        if: steps.cache-vulkansdk.outputs.cache-hit != 'true'
+        env:
+          VULKAN_SDK: ${{env.GITHUB_WORKSPACE}}/${{env.VULKAN_SDK_VERSION}}
+        run: |
+          Invoke-WebRequest -Uri https://sdk.lunarg.com/sdk/download/${{env.VULKAN_SDK_VERSION}}/windows/VulkanSDK-${{env.VULKAN_SDK_VERSION}}-Installer.exe?Human=true -OutFile VulkanSDK-${{env.VULKAN_SDK_VERSION}}-Installer.exe
+          7z x -aoa ./VulkanSDK-${{env.VULKAN_SDK_VERSION}}-Installer.exe -oVulkanSDK
+          Remove-Item .\VulkanSDK\Demos -Recurse
+          mv VulkanSDK ${{env.VULKAN_SDK_VERSION}}
+
+      - name: configure
+        run:  |
+          curl -s -L https://github.com/vapoursynth/vapoursynth/archive/refs/tags/${{env.VAPOURSYNTH_VERSION}}.tar.gz -o ${{env.VAPOURSYNTH_VERSION}}.tar.gz
+          tar -xzvf ${{env.VAPOURSYNTH_VERSION}}.tar.gz vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include
+          mkdir "C:/Program Files/VapourSynth/sdk/include/vapoursynth"
+          mv vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include/VapourSynth.h "C:/Program Files/VapourSynth/sdk/include/vapoursynth/VapourSynth.h"
+          mv vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include/VSHelper.h "C:/Program Files/VapourSynth/sdk/include/vapoursynth/VSHelper.h"
+          $env:VULKAN_SDK="$(pwd)/${{env.VULKAN_SDK_VERSION}}"
+          mkdir build && cd build
+          cmake ..
 
       - name: build
         run: cmake --build build -j 2
