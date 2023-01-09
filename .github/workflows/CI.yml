@@ -19,6 +19,9 @@ on:
       - '**/LICENSE'
       - '**.md'
 
+  # Manual trigger
+  workflow_dispatch:
+
 env:
   VULKAN_SDK_VERSION: 1.3.236.0
   VAPOURSYNTH_VERSION: R61
