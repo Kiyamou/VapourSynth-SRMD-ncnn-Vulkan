@@ -4,6 +4,8 @@
 
 SRMD super resolution for VapourSynth, based on [srmd-ncnn-vulkan](https://github.com/nihui/srmd-ncnn-vulkan). Some code is from [vapoursynth-waifu2x-ncnn-vulkan](https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan).
 
+VapourSynth API4 is supported by default. API3 builds are also available; the Python interface is the same for both versions.
+
 ## Usage
 
 ```python
@@ -38,6 +40,10 @@ Models should be located in folder `models`, and folder `models` should be locat
   * If true, quality will be improved, but speed will be significantly slower.
 
 ## Compilation
+
+CMake 3.15 or newer is required. The default build targets VapourSynth API4 and requires `VapourSynth4.h` and `VSHelper4.h` from the VapourSynth SDK. To build for API3 instead, add `-DUSE_VAPOURSYNTH_API4=OFF` to the CMake configure command; this requires `VapourSynth.h` and `VSHelper.h`. Use separate build directories for the two versions.
+
+When using CMake 4 or newer, also add `"-DCMAKE_POLICY_VERSION_MINIMUM=3.5"` to configure the bundled ncnn and glslang dependencies.
 
 ### Windows
 

@@ -1,11 +1,14 @@
+cmake_minimum_required(VERSION 3.15)
+
 # static link msvcrt
 cmake_policy(SET CMP0091 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 project(vapoursynth-srmd-ncnn-vulkan)
-cmake_minimum_required(VERSION 3.9)
 set(CMAKE_BUILD_TYPE Release)
+
+option(USE_VAPOURSYNTH_API4 "Build for VapourSynth API4 (disable for API3)" ON)
 
 find_package(Vulkan REQUIRED)
 
@@ -140,18 +143,27 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # check VapourSynth headers
 if (UNIX)
     set(VAPOURSYNTH_INCLUDE_DIR "/usr/local/include/vapoursynth" CACHE PATH "VapourSynth header files")
-    if (NOT EXISTS "${VAPOURSYNTH_INCLUDE_DIR}/VSHelper.h")
-        message(FATAL_ERROR "VapourSynth header files not found, specify with -DVAPOURSYNTH_INCLUDE_DIR")
-    endif()
 elseif (WIN32)
     set(VAPOURSYNTH_INCLUDE_DIR "C:/Program Files/VapourSynth/sdk/include/vapoursynth" CACHE PATH "VapourSynth header files")
-    if (NOT EXISTS "${VAPOURSYNTH_INCLUDE_DIR}/VSHelper.h")
-        message(FATAL_ERROR "VapourSynth header files not found, specify with -DVAPOURSYNTH_INCLUDE_DIR")
-    endif()
 endif()
+
+if(USE_VAPOURSYNTH_API4)
+    set(VAPOURSYNTH_HEADERS VapourSynth4.h VSHelper4.h)
+else()
+    set(VAPOURSYNTH_HEADERS VapourSynth.h VSHelper.h)
+endif()
+foreach(header IN LISTS VAPOURSYNTH_HEADERS)
+    if(NOT EXISTS "${VAPOURSYNTH_INCLUDE_DIR}/${header}")
+        message(FATAL_ERROR "${header} not found, specify the VapourSynth header directory with -DVAPOURSYNTH_INCLUDE_DIR")
+    endif()
+endforeach()
 
 # libsrmdnv
 add_library(srmdnv SHARED src/main.cpp src/srmd.cpp)
+target_compile_features(srmdnv PRIVATE cxx_std_14)
+if(USE_VAPOURSYNTH_API4)
+    target_compile_definitions(srmdnv PRIVATE USE_VAPOURSYNTH_API4)
+endif()
 target_include_directories(srmdnv PRIVATE ${VAPOURSYNTH_INCLUDE_DIR})
 target_link_libraries(srmdnv ncnn ${Vulkan_LIBRARY})
 add_dependencies(srmdnv generate-spirv)

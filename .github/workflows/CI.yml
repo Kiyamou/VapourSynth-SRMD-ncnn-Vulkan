@@ -23,6 +23,7 @@ on:
   workflow_dispatch:
 
 env:
+  # Only Vulkan headers and loader are needed
   VULKAN_SDK_VERSION: 1.3.236.0
   VAPOURSYNTH_VERSION: R61
   CMAKE_BUILD_TYPE: Release
@@ -32,36 +33,49 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 3
+            api4: 'OFF'
+          - api: 4
+            api4: 'ON'
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
 
       - name: cache-vulkansdk
         id: cache-vulkansdk
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{env.VULKAN_SDK_VERSION}}
-          key: vulkansdk-linux-${{env.VULKAN_SDK_VERSION}}
+          key: vulkan-minimal-linux-${{env.VULKAN_SDK_VERSION}}
 
       - name: vulkansdk
         if: steps.cache-vulkansdk.outputs.cache-hit != 'true'
+        env:
+          VULKAN_SDK: ${{github.workspace}}/${{env.VULKAN_SDK_VERSION}}/x86_64
         run: |
-          wget https://sdk.lunarg.com/sdk/download/${{env.VULKAN_SDK_VERSION}}/linux/vulkansdk-linux-x86_64-${{env.VULKAN_SDK_VERSION}}.tar.gz?Human=true -O vulkansdk-linux-x86_64-${{env.VULKAN_SDK_VERSION}}.tar.gz
-          tar -xf vulkansdk-linux-x86_64-${{env.VULKAN_SDK_VERSION}}.tar.gz
-          rm -rf ${{env.VULKAN_SDK_VERSION}}/source ${{env.VULKAN_SDK_VERSION}}/samples
-          find ${{env.VULKAN_SDK_VERSION}} -type f | grep -v -E 'vulkan|glslang' | xargs rm
+          version="${VULKAN_SDK_VERSION%.*}"
+          for component in Vulkan-Headers Vulkan-Loader; do
+            curl -fL "https://github.com/KhronosGroup/$component/archive/refs/tags/v$version.tar.gz" -o "$component.tar.gz"
+            tar -xzf "$component.tar.gz"
+          done
+          cmake -S "Vulkan-Headers-$version" -B vulkan-headers-build -DCMAKE_INSTALL_PREFIX="$VULKAN_SDK"
+          cmake --install vulkan-headers-build
+          cmake -S "Vulkan-Loader-$version" -B vulkan-loader-build -DCMAKE_INSTALL_PREFIX="$VULKAN_SDK" -DVULKAN_HEADERS_INSTALL_DIR="$VULKAN_SDK" -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_TESTS=OFF -DENABLE_WERROR=OFF -DBUILD_WSI_XCB_SUPPORT=OFF -DBUILD_WSI_XLIB_SUPPORT=OFF -DBUILD_WSI_WAYLAND_SUPPORT=OFF
+          cmake --build vulkan-loader-build --config Release --target install -j 2
 
       - name: configure
         run:  |
           wget https://github.com/vapoursynth/vapoursynth/archive/refs/tags/${{env.VAPOURSYNTH_VERSION}}.tar.gz
           tar -xzvf ${{env.VAPOURSYNTH_VERSION}}.tar.gz vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include
-          mkdir src/vapoursynth
-          mv vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include/VapourSynth.h src/vapoursynth/VapourSynth.h
-          mv vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include/VSHelper.h src/vapoursynth/VSHelper.h
+          mv vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include src/vapoursynth
           export VULKAN_SDK=$(pwd)/${{env.VULKAN_SDK_VERSION}}/x86_64
-          mkdir build && cd build
-          cmake -DVAPOURSYNTH_INCLUDE_DIR=../src/vapoursynth ..
+          cmake -S . -B build -DVAPOURSYNTH_INCLUDE_DIR="$(pwd)/src/vapoursynth" -DUSE_VAPOURSYNTH_API4=${{matrix.api4}} -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
       - name: build
         run: cmake --build build -j 2
@@ -70,56 +84,64 @@ jobs:
         run: strip build/libsrmdnv.so
 
       - name: upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: linux-vapoursynth-srmd-ncnn-vulkan
+          name: linux-vapoursynth-srmd-ncnn-vulkan-api${{matrix.api}}
           path: build/libsrmdnv.so
 
   build-windows:
 
     runs-on: windows-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 3
+            api4: 'OFF'
+          - api: 4
+            api4: 'ON'
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
 
       - name: cache-vulkansdk
         id: cache-vulkansdk
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{env.VULKAN_SDK_VERSION}}
-          key: vulkansdk-windows-${{env.VULKAN_SDK_VERSION}}
+          key: vulkan-minimal-windows-${{env.VULKAN_SDK_VERSION}}
 
       - name: vulkansdk
         if: steps.cache-vulkansdk.outputs.cache-hit != 'true'
         env:
-          VULKAN_SDK: ${{env.GITHUB_WORKSPACE}}/${{env.VULKAN_SDK_VERSION}}
+          VULKAN_SDK: ${{github.workspace}}/${{env.VULKAN_SDK_VERSION}}
         run: |
-          Invoke-WebRequest -Uri https://sdk.lunarg.com/sdk/download/${{env.VULKAN_SDK_VERSION}}/windows/VulkanSDK-${{env.VULKAN_SDK_VERSION}}-Installer.exe?Human=true -OutFile VulkanSDK-${{env.VULKAN_SDK_VERSION}}-Installer.exe
-          7z x -aoa ./VulkanSDK-${{env.VULKAN_SDK_VERSION}}-Installer.exe -oVulkanSDK
-          Remove-Item .\VulkanSDK\Demos -Recurse
-          mv VulkanSDK ${{env.VULKAN_SDK_VERSION}}
+          $version = ([version]$env:VULKAN_SDK_VERSION).ToString(3)
+          foreach ($component in 'Vulkan-Headers', 'Vulkan-Loader') {
+            Invoke-WebRequest -Uri "https://github.com/KhronosGroup/$component/archive/refs/tags/v$version.tar.gz" -OutFile "$component.tar.gz"
+            tar -xzf "$component.tar.gz"
+          }
+          cmake -S "Vulkan-Headers-$version" -B vulkan-headers-build -DCMAKE_INSTALL_PREFIX="$env:VULKAN_SDK"
+          cmake --install vulkan-headers-build
+          cmake -S "Vulkan-Loader-$version" -B vulkan-loader-build -DCMAKE_INSTALL_PREFIX="$env:VULKAN_SDK" -DVULKAN_HEADERS_INSTALL_DIR="$env:VULKAN_SDK" -DBUILD_TESTS=OFF -DENABLE_WERROR=OFF
+          cmake --build vulkan-loader-build --config Release --target install -j 2
 
       - name: configure
         run:  |
           curl -s -L https://github.com/vapoursynth/vapoursynth/archive/refs/tags/${{env.VAPOURSYNTH_VERSION}}.tar.gz -o ${{env.VAPOURSYNTH_VERSION}}.tar.gz
           tar -xzvf ${{env.VAPOURSYNTH_VERSION}}.tar.gz vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include
-          mkdir "C:/Program Files/VapourSynth/sdk/include/vapoursynth"
-          mv vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include/VapourSynth.h "C:/Program Files/VapourSynth/sdk/include/vapoursynth/VapourSynth.h"
-          mv vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include/VSHelper.h "C:/Program Files/VapourSynth/sdk/include/vapoursynth/VSHelper.h"
+          mv vapoursynth-${{env.VAPOURSYNTH_VERSION}}/include src/vapoursynth
           $env:VULKAN_SDK="$(pwd)/${{env.VULKAN_SDK_VERSION}}"
-          mkdir build && cd build
-          cmake ..
+          cmake -S . -B build -DVAPOURSYNTH_INCLUDE_DIR="$pwd/src/vapoursynth" -DUSE_VAPOURSYNTH_API4=${{matrix.api4}} "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 
       - name: build
-        run: cmake --build build -j 2
-
-      - name: strip
-        run: strip build/Debug/srmdnv.dll
+        run: cmake --build build --config Release -j 2
 
       - name: upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: windows-vapoursynth-srmd-ncnn-vulkan
-          path: build/Debug/srmdnv.dll
+          name: windows-vapoursynth-srmd-ncnn-vulkan-api${{matrix.api}}
+          path: build/Release/srmdnv.dll

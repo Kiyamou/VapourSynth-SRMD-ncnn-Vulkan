@@ -9,8 +9,24 @@
 
 #include "srmd.hpp"
 
+#ifdef USE_VAPOURSYNTH_API4
+#include "VapourSynth4.h"
+#include "VSHelper4.h"
+
+using FilterNode = VSNode;
+using FilterFrame = VSFrame;
+using FilterFormat = VSVideoFormat;
+using vsh::int64ToIntS;
+constexpr int RGB_COLOR_FAMILY = cfRGB;
+#else
 #include "VapourSynth.h"
 #include "VSHelper.h"
+
+using FilterNode = VSNodeRef;
+using FilterFrame = VSFrameRef;
+using FilterFormat = VSFormat;
+constexpr int RGB_COLOR_FAMILY = cmRGB;
+#endif
 
 class Semaphore
 {
@@ -42,7 +58,7 @@ public:
 
 struct FilterData
 {
-    VSNodeRef* node;
+    FilterNode* node;
     const VSVideoInfo* vi;
     int target_width, target_height;
     SRMD* srmd;
@@ -53,9 +69,18 @@ static std::mutex g_lock{};
 static int g_filter_instance_count = 0;
 static std::map<int, Semaphore*> g_gpu_semaphore;
 
-static void process(const VSFrameRef* src, VSFrameRef* dst, const FilterData* const VS_RESTRICT d, const VSAPI* vsapi) noexcept
+static const FilterFormat* getFormat(const VSVideoInfo* vi) noexcept
 {
-    if (d->vi->format->colorFamily == cmRGB)
+#ifdef USE_VAPOURSYNTH_API4
+    return &vi->format;
+#else
+    return vi->format;
+#endif
+}
+
+static void process(const FilterFrame* src, FilterFrame* dst, const FilterData* const VS_RESTRICT d, const VSAPI* vsapi) noexcept
+{
+    if (getFormat(d->vi)->colorFamily == RGB_COLOR_FAMILY)
     {
         int src_width = vsapi->getFrameWidth(src, 0);
         int src_height = vsapi->getFrameHeight(src, 0);
@@ -76,6 +101,7 @@ static void process(const VSFrameRef* src, VSFrameRef* dst, const FilterData* co
     }
 }
 
+#ifndef USE_VAPOURSYNTH_API4
 static void VS_CC filterInit(VSMap* in, VSMap* out, void** instanceData, VSNode* node, VSCore* core, const VSAPI* vsapi)
 {
     FilterData* d = static_cast<FilterData*>(*instanceData);
@@ -85,9 +111,17 @@ static void VS_CC filterInit(VSMap* in, VSMap* out, void** instanceData, VSNode*
     vsapi->setVideoInfo(&dst_vi, 1, node);
 }
 
-static const VSFrameRef* VS_CC filterGetFrame(int n, int activationReason, void** instancData, void** frameData, VSFrameContext* frameCtx, VSCore* core, const VSAPI* vsapi)
+#endif
+
+#ifdef USE_VAPOURSYNTH_API4
+static const FilterFrame* VS_CC filterGetFrame(int n, int activationReason, void* instanceData, void** frameData, VSFrameContext* frameCtx, VSCore* core, const VSAPI* vsapi)
 {
-    const FilterData* d = static_cast<const FilterData*>(*instancData);
+    const FilterData* d = static_cast<const FilterData*>(instanceData);
+#else
+static const FilterFrame* VS_CC filterGetFrame(int n, int activationReason, void** instanceData, void** frameData, VSFrameContext* frameCtx, VSCore* core, const VSAPI* vsapi)
+{
+    const FilterData* d = static_cast<const FilterData*>(*instanceData);
+#endif
 
     if (activationReason == arInitial)
     {
@@ -95,8 +129,8 @@ static const VSFrameRef* VS_CC filterGetFrame(int n, int activationReason, void*
     }
     else if (activationReason == arAllFramesReady)
     {
-        const VSFrameRef* src = vsapi->getFrameFilter(n, d->node, frameCtx);
-        VSFrameRef* dst = vsapi->newVideoFrame(d->vi->format, d->target_width, d->target_height, src, core);
+        const FilterFrame* src = vsapi->getFrameFilter(n, d->node, frameCtx);
+        FilterFrame* dst = vsapi->newVideoFrame(getFormat(d->vi), d->target_width, d->target_height, src, core);
 
         process(src, dst, d, vsapi);
 
@@ -133,7 +167,19 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
     std::unique_ptr<FilterData> d = std::make_unique<FilterData>();
     int err;
 
-    d->node = vsapi->propGetNode(in, "clip", 0, nullptr);
+#ifdef USE_VAPOURSYNTH_API4
+    const auto getNode = vsapi->mapGetNode;
+    const auto getInt = vsapi->mapGetInt;
+    const auto setError = vsapi->mapSetError;
+    const auto getPluginById = vsapi->getPluginByID;
+#else
+    const auto getNode = vsapi->propGetNode;
+    const auto getInt = vsapi->propGetInt;
+    const auto setError = vsapi->setError;
+    const auto getPluginById = vsapi->getPluginById;
+#endif
+
+    d->node = getNode(in, "clip", 0, nullptr);
     d->vi = vsapi->getVideoInfo(d->node);
 
     {
@@ -147,12 +193,17 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
 
     try
     {
-        if (!isConstantFormat(d->vi) ||
-            d->vi->format->sampleType == stInteger ||
-            (d->vi->format->sampleType == stFloat && d->vi->format->bitsPerSample != 32))
-            throw std::string{ "only constant format 32 bits float input supported" };
+#ifdef USE_VAPOURSYNTH_API4
+        const bool constantFormat = vsh::isConstantVideoFormat(d->vi);
+#else
+        const bool constantFormat = isConstantFormat(d->vi);
+#endif
+        const FilterFormat* format = getFormat(d->vi);
+        if (!constantFormat || format->colorFamily != RGB_COLOR_FAMILY ||
+            format->sampleType != stFloat || format->bitsPerSample != 32)
+            throw std::string{ "only constant format 32 bits float RGB input supported" };
 
-        int scale = int64ToIntS(vsapi->propGetInt(in, "scale", 0, &err));
+        int scale = int64ToIntS(getInt(in, "scale", 0, &err));
         if (err)
             scale = 2;
         if (scale < 2 || scale > 4)
@@ -161,16 +212,16 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
         d->target_width = d->vi->width * scale;
         d->target_height = d->vi->height * scale;
 
-        int noise = int64ToIntS(vsapi->propGetInt(in, "noise", 0, &err));
+        int noise = int64ToIntS(getInt(in, "noise", 0, &err));
         if (err)
             noise = 3;
         if (noise < -1 || noise > 10)
             throw std::string{ "noise mode must be within -1 - 10" };
 
         // Model path
-        const std::string pluginPath{ vsapi->getPluginPath(vsapi->getPluginById("com.vapoursynth.srmdnv", core)) };
-        std::string paramPath{ pluginPath.substr(0, pluginPath.find_last_of('/')) };
-        std::string modelPath{ pluginPath.substr(0, pluginPath.find_last_of('/')) };
+        const std::string pluginPath{ vsapi->getPluginPath(getPluginById("com.vapoursynth.srmdnv", core)) };
+        std::string paramPath{ pluginPath.substr(0, pluginPath.find_last_of("/\\")) };
+        std::string modelPath{ pluginPath.substr(0, pluginPath.find_last_of("/\\")) };
         if (noise == -1)
         {
             paramPath += "/models/models-srmd/srmdnf_x" + std::to_string(scale) + ".param";
@@ -189,20 +240,20 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
             throw std::string{ "can't open model file" };
 
         // GPU id
-        int gpuId = int64ToIntS(vsapi->propGetInt(in, "gpu_id", 0, &err));
+        int gpuId = int64ToIntS(getInt(in, "gpu_id", 0, &err));
         if (err)
             gpuId = 0;
         if (gpuId < 0 || gpuId >= ncnn::get_gpu_count())
             throw std::string{ "invalid 'gpu_id'" };
 
         // Tile size
-        int tilesize_x = int64ToIntS(vsapi->propGetInt(in, "tilesize_x", 0, &err));
+        int tilesize_x = int64ToIntS(getInt(in, "tilesize_x", 0, &err));
         if (err)
             tilesize_x = 0;
         if (tilesize_x != 0 && tilesize_x < 32)
             throw std::string{ "tilesize_x must be >= 32 or set as 0" };
 
-        int tilesize_y = int64ToIntS(vsapi->propGetInt(in, "tilesize_y", 0, &err));
+        int tilesize_y = int64ToIntS(getInt(in, "tilesize_y", 0, &err));
         if (err)
             tilesize_y = tilesize_x;
         if (tilesize_y != 0 && tilesize_y < 32)
@@ -234,7 +285,7 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
         }
 
         int gpuThread;
-        int customGpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
+        int customGpuThread = int64ToIntS(getInt(in, "gpu_thread", 0, &err));
         if (customGpuThread > 0)
             gpuThread = customGpuThread;
         else
@@ -246,7 +297,7 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
             g_gpu_semaphore.insert(std::pair<int, Semaphore*>(gpuId, new Semaphore(gpuThread)));
         d->gpuSemaphore = g_gpu_semaphore.at(gpuId);
 
-        bool tta = !!vsapi->propGetInt(in, "tta", 0, &err);
+        bool tta = !!getInt(in, "tta", 0, &err);
 
         d->srmd = new SRMD(gpuId, tta);
         d->srmd->scale = scale;
@@ -266,14 +317,39 @@ static void VS_CC filterCreate(const VSMap* in, VSMap* out, void* userData, VSCo
                 ncnn::destroy_gpu_instance();
         }
 
-        vsapi->setError(out, ("SRMD: " + error).c_str());
+        setError(out, ("SRMD: " + error).c_str());
         vsapi->freeNode(d->node);
         return;
     }
 
+#ifdef USE_VAPOURSYNTH_API4
+    VSVideoInfo dst_vi = *d->vi;
+    dst_vi.width = d->target_width;
+    dst_vi.height = d->target_height;
+    const VSFilterDependency dependency{ d->node, rpStrictSpatial };
+    vsapi->createVideoFilter(out, "SRMD", &dst_vi, filterGetFrame, filterFree, fmParallel, &dependency, 1, d.release(), core);
+#else
     vsapi->createFilter(in, out, "SRMD", filterInit, filterGetFrame, filterFree, fmParallel, 0, d.release(), core);
+#endif
 }
 
+#ifdef USE_VAPOURSYNTH_API4
+VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin* plugin, const VSPLUGINAPI* vspapi)
+{
+    vspapi->configPlugin("com.vapoursynth.srmdnv", "srmdnv", "SRMD ncnn Vulkan plugin", VS_MAKE_VERSION(1, 0), VAPOURSYNTH_API_VERSION, 0, plugin);
+
+    vspapi->registerFunction("SRMD",
+                            "clip:vnode;"
+                            "scale:int:opt;"
+                            "noise:int:opt;"
+                            "tilesize_x:int:opt;"
+                            "tilesize_y:int:opt;"
+                            "gpu_id:int:opt;"
+                            "gpu_thread:int:opt;"
+                            "tta:int:opt;",
+                            "clip:vnode;", filterCreate, nullptr, plugin);
+}
+#else
 VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegisterFunction registerFunc, VSPlugin* plugin)
 {
     configFunc("com.vapoursynth.srmdnv", "srmdnv", "SRMD ncnn Vulkan plugin", VAPOURSYNTH_API_VERSION, 1, plugin);
@@ -289,3 +365,4 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                  "tta:int:opt",
                  filterCreate, 0, plugin);
 }
+#endif
